@@ -1,0 +1,76 @@
+package com.kajal.FiledServiceMProject.controller;
+
+import com.kajal.FiledServiceMProject.dto.*;
+import com.kajal.FiledServiceMProject.service.WorkOrderLifecycleService;
+import com.kajal.FiledServiceMProject.service.WorkOrderService;
+import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/work-orders")
+public class WorkOrderController {
+    private final WorkOrderService workOrderService;
+    private final WorkOrderLifecycleService lifecycleService;
+
+    public WorkOrderController(WorkOrderService workOrderService, WorkOrderLifecycleService lifecycleService) {
+        this.workOrderService = workOrderService;
+        this.lifecycleService = lifecycleService;
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER', 'CUSTOMER')")
+    public ResponseEntity<WorkOrderResponse> create(@Valid @RequestBody WorkOrderRequest request) {
+        return ResponseEntity.ok(workOrderService.create(request));
+    }
+
+    @GetMapping
+    public ResponseEntity<Page<WorkOrderResponse>> list(
+            @RequestParam(required = false) String status,
+            Pageable pageable) {
+        return ResponseEntity.ok(workOrderService.list(status, pageable));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<WorkOrderResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(workOrderService.getById(id));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    public ResponseEntity<WorkOrderResponse> update(@PathVariable Long id, @Valid @RequestBody WorkOrderRequest request) {
+        return ResponseEntity.ok(workOrderService.update(id, request));
+    }
+
+    @PostMapping("/{id}/assign")
+    @PreAuthorize("hasAnyRole('DISPATCHER', 'MANAGER')")
+    public ResponseEntity<WorkOrderResponse> assign(@PathVariable Long id, @Valid @RequestBody AssignRequest request) {
+        return ResponseEntity.ok(workOrderService.assign(id, request.getTechnicianId()));
+    }
+
+    @PostMapping("/{id}/status")
+    public ResponseEntity<WorkOrderResponse> transitionStatus(@PathVariable Long id, @Valid @RequestBody TransitionRequest request) {
+        lifecycleService.transition(id, request.getToStatus(), request.getNote());
+        return ResponseEntity.ok(workOrderService.getById(id));
+    }
+
+    @GetMapping("/{id}/history")
+    public ResponseEntity<List<StatusHistoryResponse>> getHistory(@PathVariable Long id) {
+        List<StatusHistoryResponse> history = lifecycleService.getHistory(id).stream()
+                .map(h -> new StatusHistoryResponse(
+                        h.getFromStatus(),
+                        h.getToStatus(),
+                        h.getChangedBy() != null ? h.getChangedBy().getName() : "system",
+                        h.getChangedAt(),
+                        h.getNote()
+                ))
+                .toList();
+        return ResponseEntity.ok(history);
+    }
+
+}
